@@ -7,12 +7,13 @@
 <title>Ecologies of Care, Substack strip</title>
 <link rel="stylesheet" href="https://use.typekit.net/kpw6kkh.css">
 <style>
-  /* Strip of Substack posts pinned to the bottom of the ecologiesofcare.net homepage.
+  /* Strip of Substack posts at the bottom of the ecologiesofcare.net homepage.
      It repeats the header: a faint dark veil over the backdrop, white Hoss Round,
-     20px side margins. Cargo sizes the root type by the viewport height, so the iframe is
-     set to 26vh in Cargo and --share converts back to the main page's vh. */
+     20px side margins. Cargo sizes its type by the window height, so the strip needs to
+     know how tall the iframe is in Cargo (23vh). Change --share, or add ?vh=NN to the
+     iframe address, whenever that height changes. */
   :root {
-    --share: 26;                                       /* iframe height in Cargo, in vh */
+    --share: 23;                                       /* iframe height in Cargo, in vh */
     --pvh: calc(100vh / var(--share));                 /* 1vh of the main page */
     --text: clamp(11px, min(calc(var(--pvh) * 1.368), 1.536vw), 16px);   /* header text size */
     --band: rgba(0, 0, 0, 0.07);                       /* header background */
@@ -170,6 +171,9 @@
   const ARCHIVE_URL = 'https://ecologiesofcare.substack.com/archive';
   const strip = document.getElementById('strip');
 
+  // ?vh=NN in the iframe address overrides --share (the iframe height in Cargo, in vh).
+  const share = Number(new URLSearchParams(location.search).get('vh'));
+  if (share > 0 && share <= 100) document.documentElement.style.setProperty('--share', String(share));
   const el = (tag, cls, text) => {
     const node = document.createElement(tag);
     if (cls) node.className = cls;
