@@ -6,6 +6,8 @@
 // Test locally with a saved feed:  FEED_FILE=feed.xml node scripts/build-posts.mjs
 
 import { readFile, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const PUBLICATION = 'https://ecologiesofcare.substack.com';
 const FEED_URL = `${PUBLICATION}/feed`;
@@ -18,10 +20,13 @@ const SUMMARY_MAX = 240;
 // and keeps each image small, which matters on a site that shows its own CO2 footprint.
 const IMAGE_TRANSFORM = 'w_600,h_450,c_fill,f_auto,q_auto:good,fl_progressive:steep';
 
-const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (compatible; EcologiesOfCareSite/1.0; +https://ecologiesofcare.net)',
-  Accept: 'application/rss+xml, application/xml;q=0.9, application/json;q=0.9, */*;q=0.8',
-};
+// Substack sits behind Cloudflare, which turns away unfamiliar clients on GitHub's servers.
+// Requests therefore go out with ordinary browser headers, first through Node's fetch and
+// then through curl. The feed is the project's own public RSS, read every three hours.
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
+const ACCEPT_RSS = 'application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.7';
+const ACCEPT_JSON = 'application/json, text/plain;q=0.9, */*;q=0.8';
+const ACCEPT_LANGUAGE = 'en-GB,en;q=0.9';
 
 const NAMED_ENTITIES = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
@@ -135,13 +140,16 @@ function postsFromArchive(list) {
   }));
 }
 
-async function get(url, kind) {
+async function viaFetch(url, accept) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(20_000) });
-      if (res.ok) return kind === 'json' ? await res.json() : await res.text();
-      lastError = new Error(`HTTP ${res.status} from ${url}`);
+      const res = await fetch(url, {
+        headers: { 'User-Agent': USER_AGENT, Accept: accept, 'Accept-Language': ACCEPT_LANGUAGE },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (res.ok) return await res.text();
+      lastError = new Error(`HTTP ${res.status}`);
       if (res.status !== 429 && res.status < 500) break;   // retrying will not help
     } catch (err) {
       lastError = err;
@@ -151,14 +159,43 @@ async function get(url, kind) {
   throw lastError;
 }
 
+const execFileAsync = promisify(execFile);
+
+async function viaCurl(url, accept) {
+  const { stdout } = await execFileAsync('curl', [
+    '--silent', '--show-error', '--location', '--compressed', '--max-time', '20',
+    '--user-agent', USER_AGENT,
+    '--header', `Accept: ${accept}`,
+    '--header', `Accept-Language: ${ACCEPT_LANGUAGE}`,
+    '--write-out', '\n%{http_code}',
+    url,
+  ], { maxBuffer: 20 * 1024 * 1024 });
+  const cut = stdout.lastIndexOf('\n');
+  const status = Number(stdout.slice(cut + 1));
+  if (status !== 200) throw new Error(`HTTP ${status}`);
+  return stdout.slice(0, cut);
+}
+
 async function collect() {
   if (process.env.FEED_FILE) return postsFromRss(await readFile(process.env.FEED_FILE, 'utf8'));
-  try {
-    return postsFromRss(await get(FEED_URL, 'text'));
-  } catch (err) {
-    console.log(`Feed failed (${err.message}), trying the archive API.`);
-    return postsFromArchive(await get(ARCHIVE_API, 'json'));
+
+  const sources = [
+    ['feed via fetch', () => viaFetch(FEED_URL, ACCEPT_RSS).then(postsFromRss)],
+    ['feed via curl', () => viaCurl(FEED_URL, ACCEPT_RSS).then(postsFromRss)],
+    ['archive API via fetch', () => viaFetch(ARCHIVE_API, ACCEPT_JSON).then(t => postsFromArchive(JSON.parse(t)))],
+    ['archive API via curl', () => viaCurl(ARCHIVE_API, ACCEPT_JSON).then(t => postsFromArchive(JSON.parse(t)))],
+  ];
+  const failures = [];
+  for (const [name, read] of sources) {
+    try {
+      const posts = await read();
+      console.log(`::notice::Read ${posts.length} posts (${name}).`);
+      return posts;
+    } catch (err) {
+      failures.push(`${name}: ${err.message}`);
+    }
   }
+  throw new Error(failures.join('; '));
 }
 
 async function main() {
