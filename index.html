@@ -5,27 +5,41 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Ecologies of Care, Substack strip</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://use.typekit.net/kpw6kkh.css">
 <style>
-  /* A horizontal strip of Substack posts, embedded on ecologiesofcare.net through an iframe.
-     The cards follow the iframe height: set the height in Cargo and everything scales with it. */
+  /* Strip of Substack posts pinned to the bottom of the ecologiesofcare.net homepage.
+     It repeats the header: a faint dark veil over the backdrop, white Hoss Round,
+     20px side margins. Cargo sizes the root type by the viewport height, so the iframe is
+     set to 26vh in Cargo and --share converts back to the main page's vh. */
   :root {
-    --gap: 6px;                    /* outer padding and space between cards */
-    --cap: 60px;                   /* caption: title, date, author */
+    --share: 26;                                       /* iframe height in Cargo, in vh */
+    --pvh: calc(100vh / var(--share));                 /* 1vh of the main page */
+    --text: clamp(11px, min(calc(var(--pvh) * 1.368), 1.536vw), 16px);   /* header text size */
+    --band: rgba(0, 0, 0, 0.07);                       /* header background */
     --paper: #FDFDFD;
+    --paper-soft: rgba(253, 253, 253, 0.68);
     --ink: #000000;
-    --mute: #6E7A6F;               /* grey leaning towards the project green */
-    --green: #354936;
-    --green-2: #3B6F4D;
-    --veil: rgba(53, 73, 54, 0.95);
-    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --chip: rgba(0, 0, 0, 0.3);
+    --veil: rgba(0, 0, 0, 0.4);
+    --tint: rgba(253, 253, 253, 0.12);
+    --edge: 20px;                                      /* header side margin */
+    --top: 12px;
+    --gap: 12px;
+    --sans: "hoss-round", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (max-width: 600px) {
+    :root { --edge: 12px; --top: 10px; --gap: 8px; }
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; background: transparent; }
-  body { font: 400 13px/16px var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: var(--sans);
+    font-size: var(--text);
+    line-height: 1.2;
+    color: var(--paper);
+    -webkit-font-smoothing: antialiased;
+  }
   a { color: inherit; text-decoration: none; }
   [hidden] { display: none !important; }
 
@@ -33,7 +47,8 @@
     display: flex;
     gap: var(--gap);
     height: 100%;
-    padding: var(--gap);
+    padding: var(--top) var(--edge) var(--edge);
+    background: var(--band);
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-x: contain;
@@ -46,16 +61,16 @@
   .strip.is-dragging { cursor: grabbing; }
 
   .card {
+    --cap: calc(3.6em + 6px);                          /* three lines of caption */
     position: relative;
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     height: 100%;
-    width: calc((100vh - 2 * var(--gap) - var(--cap)) * 4 / 3);
-    background: var(--paper);
+    width: calc((100vh - var(--top) - var(--edge) - var(--cap)) * 4 / 3);
   }
 
-  .media { position: relative; flex: 1 1 auto; overflow: hidden; background: var(--green); }
+  .media { position: relative; flex: 1 1 auto; overflow: hidden; background: var(--tint); }
   .media img {
     position: absolute;
     inset: 0;
@@ -64,47 +79,48 @@
     object-fit: cover;
     display: block;
     -webkit-user-drag: none;
+    transition: opacity 0.25s ease;
   }
+  .card:hover .media img { opacity: 0.9; }
   .media-text {
     position: absolute;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    color: var(--paper);
-    font: 500 15px/18px var(--sans);
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    font-size: 1.15em;
+    line-height: 1.2;
     text-wrap: balance;
   }
+  .media-text b { font-weight: 700; }
 
   .label {
     position: absolute;
-    top: var(--gap);
+    top: 8px;
     z-index: 3;
-    padding: 3px 5px;
-    background: var(--paper);
-    color: var(--ink);
-    font: 400 12px/14px var(--sans);
+    padding: 0.2em 0.45em 0.25em;
+    font: inherit;
+    font-size: 0.85em;
+    line-height: 1.2;
+    color: var(--paper);
+    background: var(--chip);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
   }
-  .label--left { left: var(--gap); }
-  .label--right { right: var(--gap); border: 0; cursor: pointer; }
+  .label--left { left: 8px; }
+  .label--right { right: 8px; border: 0; cursor: pointer; }
   .label--right:hover,
-  .card.is-open .label--right { background: var(--green); color: var(--paper); }
-  .label--right:focus-visible { outline: 2px solid var(--green-2); outline-offset: 1px; }
+  .card.is-open .label--right { background: var(--paper); color: var(--ink); }
+  .label--right:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
 
-  .cap { height: var(--cap); padding: 5px 6px 0; }
-  .cap > * {
-    display: block;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font: 400 13px/16px var(--sans);
-  }
-  .cap .meta { color: var(--mute); font-variant-numeric: tabular-nums; }
+  .cap { height: var(--cap); padding-top: 6px; }
+  .cap > * { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: inherit; }
+  .cap .meta { color: var(--paper-soft); font-variant-numeric: tabular-nums; }
 
   /* The title link stretches over the whole card, so any click opens the article. */
   .title a::after { content: ""; position: absolute; inset: 0; z-index: 2; }
   .title a:focus-visible { outline: none; }
-  .title a:focus-visible::after { outline: 2px solid var(--green-2); outline-offset: -2px; }
-  .card:hover .title a { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  .title a:focus-visible::after { outline: 2px solid var(--paper); outline-offset: 2px; }
+  .card:hover .title a { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.15em; }
 
   .veil {
     position: absolute;
@@ -112,17 +128,18 @@
     z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: calc(var(--gap) + 26px) 8px 8px;
+    gap: 0.5em;
+    padding: calc(8px + 2em) 10px 10px;
     background: var(--veil);
-    color: var(--paper);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.18s ease, visibility 0.18s;
+    transition: opacity 0.2s ease, visibility 0.2s;
   }
   .card.is-open .veil { opacity: 1; visibility: visible; }
   .veil-title {
-    font: 500 13px/16px var(--sans);
+    font-weight: 700;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
@@ -136,10 +153,10 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 6;
   }
-  .veil-go { font-size: 12px; opacity: 0.75; }
+  .veil-go { font-size: 0.85em; color: var(--paper-soft); }
 
   @media (prefers-reduced-motion: reduce) {
-    .veil { transition: none; }
+    .veil, .media img { transition: none; }
   }
 </style>
 </head>
@@ -203,7 +220,7 @@
       const img = el('img');
       img.alt = '';
       img.decoding = 'async';
-      img.loading = index < 5 ? 'eager' : 'lazy';
+      img.loading = index < 6 ? 'eager' : 'lazy';
       img.draggable = false;
       img.addEventListener('error', () => {
         if (isHttps(post.imageOriginal) && img.src !== post.imageOriginal) img.src = post.imageOriginal;
@@ -251,7 +268,9 @@
     const card = el('article', 'card');
     const media = el('div', 'media');
     media.appendChild(el('span', 'label label--left', 'Substack'));
-    media.appendChild(el('span', 'media-text', 'Ecologies of Care on Substack'));
+    const text = el('span', 'media-text');
+    text.append(el('b', null, 'ecologies of care'), ' on Substack');
+    media.appendChild(text);
     card.appendChild(media);
     card.appendChild(caption('All posts', ARCHIVE_URL, [
       el('span', 'meta', 'Archive and subscription'),
