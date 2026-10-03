@@ -84,14 +84,15 @@
     transition: opacity 0.25s ease;
   }
   .card:hover .media img { opacity: 0.9; }
-  /* Posts without their own image show the project logo at half size, on its own green. */
+  /* Posts without their own image show the project logo at about half its former size, on its own green.
+     The logo file has its own margin, so 60% of the image area makes the mark about half as tall. */
   .media--logo { background: var(--logo-ground); }
   .media--logo img {
     inset: auto;
     left: 50%;
     top: 50%;
     width: auto;
-    height: 50%;
+    height: 60%;
     object-fit: contain;
     transform: translate(-50%, -50%);
   }
