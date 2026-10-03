@@ -19,6 +19,9 @@ const SUMMARY_MAX = 240;
 // Substack's image CDN crops and compresses on request. 600x450 covers a card at 2x
 // and keeps each image small, which matters on a site that shows its own CO2 footprint.
 const IMAGE_TRANSFORM = 'w_600,h_450,c_fill,f_auto,q_auto:good,fl_progressive:steep';
+// Posts without their own image fall back to the publication logo. The logo is kept whole
+// (no crop) so the strip can show it small and centred.
+const LOGO_TRANSFORM = 'w_400,h_400,c_fit,f_auto,q_auto:good';
 
 // Substack sits behind Cloudflare, which turns away unfamiliar clients on GitHub's servers.
 // Requests therefore go out with ordinary browser headers, first through Node's fetch and
@@ -89,11 +92,15 @@ function originalImage(url) {
   return original.startsWith('https://') ? original : '';
 }
 
-const cardImage = original =>
-  original ? `https://substackcdn.com/image/fetch/${IMAGE_TRANSFORM}/${encodeURIComponent(original)}` : '';
+const cdnImage = (original, transform) =>
+  original ? `https://substackcdn.com/image/fetch/${transform}/${encodeURIComponent(original)}` : '';
 
-function makePost({ title, summary, url, date, author, image, type }) {
-  const original = originalImage(image);
+function makePost({ title, summary, url, date, author, image, type, logo = '' }) {
+  let original = originalImage(image);
+  const logoOriginal = originalImage(logo);
+  // No image of its own, or Substack's default cover: use the publication logo.
+  const isLogo = Boolean(logoOriginal) && (!original || original === logoOriginal);
+  if (isLogo) original = logoOriginal;
   const parsedDate = new Date(date);
   return {
     title: title.replace(/\s*:\s*$/, ''),
@@ -102,8 +109,9 @@ function makePost({ title, summary, url, date, author, image, type }) {
     date: isNaN(parsedDate) ? '' : parsedDate.toISOString(),
     author: author || 'Ecologies of Care',
     type: type === 'podcast' ? 'podcast' : 'article',
-    image: cardImage(original),
+    image: cdnImage(original, isLogo ? LOGO_TRANSFORM : IMAGE_TRANSFORM),
     imageOriginal: original,
+    logo: isLogo,
   };
 }
 
@@ -111,6 +119,8 @@ const isValid = post => post.title && post.url.startsWith('https://') && post.da
 
 function postsFromRss(xml) {
   if (!/<rss\b/i.test(xml)) throw new Error('response is not an RSS feed');
+  const channelHead = (xml.match(/<channel\b[\s\S]*?(?=<item\b)/i) || [''])[0];
+  const logo = toText(tag(tag(channelHead, 'image'), 'url'));
   const items = xml.match(/<item\b[\s\S]*?<\/item>/gi) || [];
   return items.map(item => {
     const isAudio = /^audio\//i.test(attr(item, 'enclosure', 'type'));
@@ -123,6 +133,7 @@ function postsFromRss(xml) {
       author: toText(tag(item, 'dc:creator')),
       image: isAudio ? attr(item, 'itunes:image', 'href') : attr(item, 'enclosure', 'url'),
       type: isAudio ? 'podcast' : 'article',
+      logo,
     });
   });
 }
