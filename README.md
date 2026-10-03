@@ -28,32 +28,49 @@ hours and updates the cards. Nobody has to touch anything when a new post is pub
 3. **Turn on Pages**: Settings > Pages > Source: **GitHub Actions**.
 4. **Run it once**: Actions tab > "Update Substack posts" > **Run workflow**. After about a
    minute the strip is live at `https://ACCOUNT.github.io/substack-strip/`.
-5. **Embed it in Cargo**. In the homepage, open Code View and paste this at the end of the
-   page content (replace `ACCOUNT`):
+5. **Embed it in Cargo** as a page pinned to the bottom of the screen, like the header is
+   pinned to the top.
+   - Create a new page (for example "Substack strip"), open its Code View, replace
+     everything with this line and click Update:
 
-   ```html
-   <iframe src="https://ACCOUNT.github.io/substack-strip/" title="Latest posts from the Ecologies of Care Substack" loading="lazy"></iframe>
-   ```
+     ```html
+     <iframe src="https://salgadobrunos28.github.io/substack-strip/" title="Latest posts from the Ecologies of Care Substack"></iframe>
+     ```
 
-   Then add this to the CSS editor (Site Settings > CSS/HTML). Cargo strips inline styles,
-   so the sizing has to live here:
+   - In the Pages menu, right-click the new page > Pin, and turn on **Pin at the bottom**,
+     **Fixed in place** and **Overlay other contents**. Check that the pin is on for mobile
+     as well.
+   - Add this to the CSS editor (Site Settings > CSS/HTML). Cargo strips inline styles, so
+     the sizing has to live here:
 
-   ```css
-   iframe[src*="substack-strip"] {
-     display: block;
-     width: 100vw;
-     height: 290px;
-     margin-left: calc(50% - 50vw);   /* full width, edge to edge */
-     border: 0;
-     background: transparent;
-   }
-   @media (max-width: 600px) {
-     iframe[src*="substack-strip"] { height: 220px; }
-   }
-   ```
+     ```css
+     /* Substack strip, pinned to the bottom of the homepage */
+     iframe[src*="substack-strip"] {
+       display: block;
+       width: 100%;
+       height: 26vh;                    /* keep in step with --share in index.html */
+       border: 0;
+       background: transparent;
+     }
+     .page:has(iframe[src*="substack-strip"]),
+     .page:has(iframe[src*="substack-strip"]) .page-layout,
+     .page:has(iframe[src*="substack-strip"]) .page-content,
+     .page:has(iframe[src*="substack-strip"]) bodycopy {
+       padding: 0 !important;
+       background: transparent !important;
+     }
+     /* homepage only */
+     body:not(.home) .page:has(iframe[src*="substack-strip"]) { display: none !important; }
+     /* room under the footer so the strip never covers it */
+     body.home [id="L0177634219"] { padding-bottom: 26vh; }
+     ```
 
-The cards scale with the iframe height, so `height` is the only value to change for bigger
-or smaller cards.
+The strip copies the header: the same faint dark band, white Hoss Round (from the site's
+Adobe Fonts kit) and 20 px side margins. Cargo sizes its type by the height of the window,
+so the strip does the same: its `--share` value tells it what share of the window the iframe
+takes. To make the strip taller or shorter, change `26vh` in the CSS (both lines) and
+`--share` in `index.html` together. If the Adobe Fonts web project lists allowed domains,
+add `salgadobrunos28.github.io` to it.
 
 ## How it behaves
 
@@ -69,7 +86,7 @@ or smaller cards.
 
 | What | Where |
 | --- | --- |
-| Card size | `height` in the Cargo CSS above |
+| Card size | `26vh` in the Cargo CSS and `--share` in `index.html`, together |
 | Days a post counts as "New" | `NEW_DAYS` in `index.html` |
 | Number of cards | `MAX_CARDS` in `index.html` and `MAX_POSTS` in `scripts/build-posts.mjs` |
 | Update frequency | `cron` in `.github/workflows/update-posts.yml` |
