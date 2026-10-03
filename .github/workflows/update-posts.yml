@@ -1,0 +1,70 @@
+name: Update Substack posts
+
+on:
+  schedule:
+    - cron: "23 */3 * * *"      # every three hours
+  workflow_dispatch:             # "Run workflow" button for an immediate update
+  push:
+    branches: [main]             # redeploy when index.html or the script changes
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build posts.json from the Substack feed
+        run: node scripts/build-posts.mjs
+
+      - name: Save posts.json to the repository
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain -- posts.json)" ]; then
+            git add posts.json
+            git commit -m "Update posts from Substack"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 2592000 ]; then
+            # GitHub pauses scheduled workflows after 60 days without repository activity.
+            git commit --allow-empty -m "Keep the update schedule active"
+            git push
+          else
+            echo "No new posts."
+          fi
+
+      - name: Prepare the site
+        if: steps.commit.outputs.changed == 'true' || github.event_name != 'schedule'
+        run: |
+          mkdir -p _site
+          cp index.html posts.json _site/
+
+      - uses: actions/configure-pages@v5
+        if: steps.commit.outputs.changed == 'true' || github.event_name != 'schedule'
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.commit.outputs.changed == 'true' || github.event_name != 'schedule'
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v5
+        if: steps.commit.outputs.changed == 'true' || github.event_name != 'schedule'

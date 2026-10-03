@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Ecologies of Care, Substack strip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap">
+<style>
+  /* A horizontal strip of Substack posts, embedded on ecologiesofcare.net through an iframe.
+     The cards follow the iframe height: set the height in Cargo and everything scales with it. */
+  :root {
+    --gap: 6px;                    /* outer padding and space between cards */
+    --cap: 60px;                   /* caption: title, date, author */
+    --paper: #FDFDFD;
+    --ink: #000000;
+    --mute: #6E7A6F;               /* grey leaning towards the project green */
+    --green: #354936;
+    --green-2: #3B6F4D;
+    --veil: rgba(53, 73, 54, 0.95);
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: transparent; }
+  body { font: 400 13px/16px var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  [hidden] { display: none !important; }
+
+  .strip {
+    display: flex;
+    gap: var(--gap);
+    height: 100%;
+    padding: var(--gap);
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .strip::-webkit-scrollbar { display: none; }
+  .strip.is-dragging { cursor: grabbing; }
+
+  .card {
+    position: relative;
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: calc((100vh - 2 * var(--gap) - var(--cap)) * 4 / 3);
+    background: var(--paper);
+  }
+
+  .media { position: relative; flex: 1 1 auto; overflow: hidden; background: var(--green); }
+  .media img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    -webkit-user-drag: none;
+  }
+  .media-text {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    color: var(--paper);
+    font: 500 15px/18px var(--sans);
+    text-wrap: balance;
+  }
+
+  .label {
+    position: absolute;
+    top: var(--gap);
+    z-index: 3;
+    padding: 3px 5px;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 12px/14px var(--sans);
+  }
+  .label--left { left: var(--gap); }
+  .label--right { right: var(--gap); border: 0; cursor: pointer; }
+  .label--right:hover,
+  .card.is-open .label--right { background: var(--green); color: var(--paper); }
+  .label--right:focus-visible { outline: 2px solid var(--green-2); outline-offset: 1px; }
+
+  .cap { height: var(--cap); padding: 5px 6px 0; }
+  .cap > * {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font: 400 13px/16px var(--sans);
+  }
+  .cap .meta { color: var(--mute); font-variant-numeric: tabular-nums; }
+
+  /* The title link stretches over the whole card, so any click opens the article. */
+  .title a::after { content: ""; position: absolute; inset: 0; z-index: 2; }
+  .title a:focus-visible { outline: none; }
+  .title a:focus-visible::after { outline: 2px solid var(--green-2); outline-offset: -2px; }
+  .card:hover .title a { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+  .veil {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: calc(var(--gap) + 26px) 8px 8px;
+    background: var(--veil);
+    color: var(--paper);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.18s ease, visibility 0.18s;
+  }
+  .card.is-open .veil { opacity: 1; visibility: visible; }
+  .veil-title {
+    font: 500 13px/16px var(--sans);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+  }
+  .veil-text {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 6;
+  }
+  .veil-go { font-size: 12px; opacity: 0.75; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .veil { transition: none; }
+  }
+</style>
+</head>
+<body>
+<section class="strip" id="strip" aria-label="Latest posts from the Ecologies of Care Substack" hidden></section>
+
+<script>
+(() => {
+  const NEW_DAYS = 30;     // posts younger than this many days get the "New" label
+  const MAX_CARDS = 12;
+  const ARCHIVE_URL = 'https://ecologiesofcare.substack.com/archive';
+  const strip = document.getElementById('strip');
+
+  const el = (tag, cls, text) => {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  };
+  const isHttps = url => typeof url === 'string' && url.startsWith('https://');
+  const pad = n => String(n).padStart(2, '0');
+  const formatDate = iso => {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+  };
+  const isNew = iso => (Date.now() - new Date(iso).getTime()) / 864e5 <= NEW_DAYS;
+
+  function caption(title, url, lines) {
+    const cap = el('div', 'cap');
+    const heading = el('h2', 'title');
+    const link = el('a', null, title);
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    heading.appendChild(link);
+    cap.appendChild(heading);
+    lines.forEach(node => cap.appendChild(node));
+    return cap;
+  }
+
+  function closeAll(except) {
+    strip.querySelectorAll('.card.is-open').forEach(card => {
+      if (card === except) return;
+      card.classList.remove('is-open');
+      const btn = card.querySelector('.label--right');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.textContent = 'Info';
+    });
+  }
+
+  function postCard(post, index) {
+    const card = el('article', 'card');
+    const media = el('div', 'media');
+
+    const showTitleInstead = () => {
+      media.querySelector('img')?.remove();
+      if (!media.querySelector('.media-text')) media.appendChild(el('span', 'media-text', post.title));
+    };
+
+    if (isHttps(post.image)) {
+      const img = el('img');
+      img.alt = '';
+      img.decoding = 'async';
+      img.loading = index < 5 ? 'eager' : 'lazy';
+      img.draggable = false;
+      img.addEventListener('error', () => {
+        if (isHttps(post.imageOriginal) && img.src !== post.imageOriginal) img.src = post.imageOriginal;
+        else showTitleInstead();
+      });
+      img.src = post.image;
+      media.appendChild(img);
+    } else {
+      showTitleInstead();
+    }
+
+    const kind = post.type === 'podcast' ? 'Podcast' : 'Article';
+    media.appendChild(el('span', 'label label--left', isNew(post.date) ? 'New' : kind));
+
+    const veilId = `veil-${index}`;
+    const info = el('button', 'label label--right', 'Info');
+    info.type = 'button';
+    info.setAttribute('aria-expanded', 'false');
+    info.setAttribute('aria-controls', veilId);
+    info.addEventListener('click', () => {
+      const open = !card.classList.contains('is-open');
+      closeAll(card);
+      card.classList.toggle('is-open', open);
+      info.setAttribute('aria-expanded', String(open));
+      info.textContent = open ? 'Close' : 'Info';
+    });
+    media.appendChild(info);
+
+    const veil = el('div', 'veil');
+    veil.id = veilId;
+    veil.appendChild(el('p', 'veil-title', post.title));
+    if (post.summary) veil.appendChild(el('p', 'veil-text', post.summary));
+    veil.appendChild(el('span', 'veil-go', 'Read on Substack'));
+    media.appendChild(veil);
+
+    card.appendChild(media);
+
+    const time = el('time', 'meta', formatDate(post.date));
+    time.dateTime = post.date;
+    card.appendChild(caption(post.title, post.url, [time, el('span', 'meta', post.author || 'Ecologies of Care')]));
+    return card;
+  }
+
+  function archiveCard() {
+    const card = el('article', 'card');
+    const media = el('div', 'media');
+    media.appendChild(el('span', 'label label--left', 'Substack'));
+    media.appendChild(el('span', 'media-text', 'Ecologies of Care on Substack'));
+    card.appendChild(media);
+    card.appendChild(caption('All posts', ARCHIVE_URL, [
+      el('span', 'meta', 'Archive and subscription'),
+      el('span', 'meta', 'ecologiesofcare.substack.com'),
+    ]));
+    return card;
+  }
+
+  // Drag to scroll with a mouse. Touch and trackpads scroll natively.
+  let drag = null;
+  let dragged = false;
+  strip.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest('button')) return;
+    drag = { x: e.clientX, left: strip.scrollLeft, id: e.pointerId };
+    dragged = false;
+  });
+  strip.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    if (!dragged && Math.abs(dx) > 4) {
+      dragged = true;
+      strip.classList.add('is-dragging');
+      try { strip.setPointerCapture(drag.id); } catch (_) {}
+    }
+    if (dragged) strip.scrollLeft = drag.left - dx;
+  });
+  const endDrag = () => { drag = null; strip.classList.remove('is-dragging'); };
+  strip.addEventListener('pointerup', endDrag);
+  strip.addEventListener('pointercancel', endDrag);
+  strip.addEventListener('click', e => {
+    if (!dragged) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragged = false;
+  }, true);
+  strip.addEventListener('dragstart', e => e.preventDefault());
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(null); });
+
+  async function loadPosts() {
+    if (Array.isArray(window.EOC_POSTS)) return window.EOC_POSTS;
+    const res = await fetch('posts.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`posts.json: HTTP ${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data.posts) ? data.posts : [];
+  }
+
+  loadPosts()
+    .then(posts => {
+      const valid = posts.filter(p => p && p.title && isHttps(p.url)).slice(0, MAX_CARDS);
+      if (!valid.length) return;
+      valid.forEach((post, i) => strip.appendChild(postCard(post, i)));
+      strip.appendChild(archiveCard());
+      strip.hidden = false;
+    })
+    .catch(err => console.warn('Substack strip:', err.message));   // the homepage shows nothing rather than a broken box
+})();
+</script>
+</body>
+</html>
